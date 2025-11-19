@@ -27,6 +27,9 @@ const IconMusic = ({ size = 24, className = "" }) => (
 const IconMaximize = ({ size = 24, className = "" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
 );
+const IconRotate = ({ size = 48, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+);
 
 function SMCRadioContent() {
   const [activeTab, setActiveTab] = useState('radio');
@@ -34,38 +37,40 @@ function SMCRadioContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentTrack, setCurrentTrack] = useState("Caricamento...");
   const [isReady, setIsReady] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
+  const [isMobile, setIsMobile] = useState(false); // Nuovo stato per rilevare se è mobile
   
-  // Gestione Copertina
   const [coverUrl, setCoverUrl] = useState("");
   const [imageError, setImageError] = useState(true);
 
   const audioRef = useRef(null);
   const videoRef = useRef(null);
 
-  // Link Streaming
   const RADIO_STREAM_URL = "https://a2.asurahosting.com:6150/radio.mp3";
-  const RADIO_METADATA_URL = "https://a2.asurahosting.com:6150/status-json.xsl";
-  const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
+  const TITLES_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.txt";
   const ORIGINAL_COVER_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.jpg";
-  
-  // Link Logo Ufficiale
+  const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
   const LOGO_URL = "https://www.smcradio.it/wp-content/uploads/logosmcbianco.png";
 
-  // --- AUTO-CONFIGURAZIONE FORZATA (Fix Responsive e CSS) ---
   useEffect(() => {
     const configureApp = () => {
-        // 1. Inietta Viewport Meta per Mobile
+        // Rilevamento semplice per mobile (touchscreen + larghezza schermo tipica)
+        const checkMobile = () => {
+            const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            // Consideriamo mobile se ha il touch E lo schermo non è enorme (es. < 1024px)
+            setIsMobile(hasTouch && window.innerWidth < 1024);
+        };
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+
         if (!document.querySelector("meta[name='viewport']")) {
             const meta = document.createElement('meta');
             meta.name = "viewport";
             meta.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
             document.head.appendChild(meta);
         } else {
-            // Se esiste ma è sbagliato, lo forziamo
             document.querySelector("meta[name='viewport']").content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
         }
-
-        // 2. Inietta Tailwind CSS se manca
         if (!document.querySelector("script[src*='tailwindcss']")) {
             const script = document.createElement('script');
             script.src = "https://cdn.tailwindcss.com";
@@ -74,68 +79,70 @@ function SMCRadioContent() {
         } else {
             setIsReady(true);
         }
+        return () => window.removeEventListener('resize', checkMobile);
     };
     configureApp();
   }, []);
 
-  // --- FETCH METADATI (TITOLI) CON PROXY E CACHE BUSTING ---
+  // Rilevamento Orientamento
+  useEffect(() => {
+      const checkOrientation = () => {
+          const landscape = window.innerWidth > window.innerHeight;
+          setIsLandscape(landscape);
+          
+          // Gestione Lock API (Best Effort per Android)
+          if (screen.orientation && screen.orientation.lock) {
+              if (activeTab === 'radio') {
+                   screen.orientation.lock('portrait').catch(() => {}); 
+              } else {
+                   screen.orientation.unlock().catch(() => {});
+              }
+          }
+          
+          // Auto-Fullscreen solo per TV su Mobile
+          if (landscape && activeTab === 'webtv' && videoRef.current && isMobile) {
+              if (!document.fullscreenElement) {
+                  videoRef.current.requestFullscreen().catch(() => {});
+              }
+          }
+      };
+
+      window.addEventListener('resize', checkOrientation);
+      checkOrientation();
+      return () => window.removeEventListener('resize', checkOrientation);
+  }, [activeTab, isMobile]);
+
   const fetchTrackInfo = async () => {
     try {
-      // 1. Aggiungiamo un timestamp sia all'URL interno che a quello del proxy per forzare il refresh
-      const timestamp = Date.now();
-      const bustCacheUrl = `${RADIO_METADATA_URL}?_t=${timestamp}`;
-      // Usiamo AllOrigins per evitare blocchi CORS
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(bustCacheUrl)}`;
-      
-      const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error("Network error");
-      
-      const wrapperData = await response.json();
-      const data = JSON.parse(wrapperData.contents); 
-      
-      let title = null;
-      if (data.icestats && data.icestats.source) {
-        const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
-        // Cerca specificamente il mount point radio.mp3
-        const source = sources.find(s => s.listenurl && s.listenurl.includes("radio.mp3")) || sources[0];
-        
-        if (source && source.title && source.title.trim() !== "" && source.title.trim() !== "-") {
-             title = source.title;
-        } else if (source && source.artist && source.title) {
-             title = `${source.artist} - ${source.title}`;
-        }
+      const targetUrl = `${TITLES_URL}?t=${Date.now()}`;
+      const response = await fetch(targetUrl);
+      if (response.ok) {
+          const rawText = await response.text();
+          if (rawText && rawText.trim().length > 1) {
+              setCurrentTrack(rawText.trim());
+          } else {
+              setCurrentTrack("SMC Radio Live");
+          }
+      } else {
+          throw new Error("Errore");
       }
-      
-      const newTitle = title || "SMC Radio Live";
-      
-      setCurrentTrack(prev => {
-          if (prev !== newTitle) return newTitle;
-          return prev;
-      });
-
     } catch (error) {
-      // console.warn("Errore titoli:", error);
-      // Non resettiamo se c'è un errore momentaneo, manteniamo l'ultimo titolo valido
-      // setCurrentTrack(prev => prev === "Caricamento..." ? "SMC Radio Live" : prev);
+       if (currentTrack === "Caricamento...") setCurrentTrack("SMC Radio Live");
     }
   };
 
   useEffect(() => {
     fetchTrackInfo();
-    const interval = setInterval(fetchTrackInfo, 5000); // Aggiorna ogni 5 secondi
+    const interval = setInterval(fetchTrackInfo, 4000);
     return () => clearInterval(interval);
   }, []);
 
-  // --- GESTIONE COPERTINA CON PROXY SICURO E CACHE BUSTING ---
   useEffect(() => {
       const timestamp = Date.now();
-      // Se il titolo è generico, mostra il fallback (logo/visualizer)
       if (currentTrack === "SMC Radio Live" || currentTrack === "Caricamento..." || currentTrack.includes("SMC Radio")) {
           setImageError(true);
           return;
       }
-
-      // Usiamo wsrv.nl come proxy immagine con timestamp per evitare cache
       const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(ORIGINAL_COVER_URL)}&t=${timestamp}&output=jpg&n=${Math.random()}`;
       setCoverUrl(proxyUrl);
       setImageError(false);
@@ -185,14 +192,6 @@ function SMCRadioContent() {
         }
     };
     initHls();
-
-    const handleResize = () => {
-        if (window.innerWidth > window.innerHeight && video && !document.fullscreenElement) {
-             video.requestFullscreen().catch(e => {});
-        }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, [activeTab]);
 
   useEffect(() => {
@@ -213,14 +212,34 @@ function SMCRadioContent() {
       </div>;
   }
 
+  // --- BLOCCO VISIVO ROTAZIONE (SOLO RADIO E SOLO MOBILE) ---
+  // Il messaggio appare SOLO se:
+  // 1. Schermo in orizzontale (isLandscape)
+  // 2. Tab è Radio
+  // 3. È un dispositivo Mobile (isMobile)
+  if (isLandscape && activeTab === 'radio' && isMobile) {
+      return (
+          <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center text-white p-8 text-center animate-in fade-in">
+              <IconRotate size={64} className="mb-4 animate-pulse text-red-600" />
+              <h2 className="text-2xl font-bold mb-2">Ruota il telefono</h2>
+              <p className="text-gray-400">La Radio si ascolta meglio in verticale.</p>
+              <button 
+                onClick={() => setActiveTab('webtv')} 
+                className="mt-8 px-6 py-2 bg-gray-800 rounded-full text-sm border border-gray-700"
+              >
+                 O vai alla Web TV
+              </button>
+          </div>
+      );
+  }
+
   return (
     <div className="fixed inset-0 bg-gray-900 text-white font-sans overflow-hidden select-none flex flex-col">
       <audio ref={audioRef} preload="none" crossOrigin="anonymous" />
 
-      {/* HEADER */}
-      <header className="flex-none px-4 py-2 bg-black/40 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-10 h-16 sm:h-20">
+      {/* HEADER - Nascosto in Landscape WebTV su Mobile */}
+      <header className={`flex-none px-4 py-2 bg-black/40 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-20 h-16 sm:h-20 transition-all duration-300 ${isLandscape && activeTab === 'webtv' && isMobile ? '-mt-20 opacity-0' : 'mt-0 opacity-100'}`}>
         <div className="flex items-center space-x-3">
-          {/* Logo Fix */}
           <div className="h-10 w-10 sm:h-12 sm:w-12 bg-red-600 rounded-full flex items-center justify-center p-2 shadow-lg shadow-red-600/40 overflow-hidden shrink-0">
             <img src={LOGO_URL} alt="SMC" className="h-full w-full object-contain" />
           </div>
@@ -233,31 +252,21 @@ function SMCRadioContent() {
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 relative w-full h-full overflow-hidden">
         
         {/* RADIO TAB */}
         <div className={`absolute inset-0 transition-opacity duration-500 ease-in-out flex flex-col ${activeTab === 'radio' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-800 via-gray-900 to-black z-0"></div>
-          {/* Background Copertina Sfocata */}
           <div className="absolute inset-0 bg-cover bg-center opacity-20 mix-blend-overlay blur-md transition-all duration-1000" 
                style={{ backgroundImage: `url(${!imageError ? coverUrl : 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop'})` }}>
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 space-y-6 sm:space-y-8 w-full">
-            
-            {/* AREA COPERTINA */}
             <div className="relative w-64 h-64 sm:w-80 sm:h-80 group shrink-0 shadow-2xl rounded-2xl">
               <div className={`absolute inset-0 bg-red-600 rounded-2xl blur-2xl opacity-20 transition-all duration-1000 ${isPlaying ? 'animate-pulse scale-105' : 'scale-100'}`}></div>
-              
               <div className="relative w-full h-full bg-gray-900 rounded-2xl border border-white/10 overflow-hidden flex items-center justify-center">
                 {!imageError ? (
-                    <img 
-                        src={coverUrl} 
-                        alt="Album Cover" 
-                        className="w-full h-full object-cover transition-opacity duration-500"
-                        onError={() => setImageError(true)}
-                    />
+                    <img src={coverUrl} alt="Album Cover" className="w-full h-full object-cover transition-opacity duration-500" onError={() => setImageError(true)} />
                 ) : (
                     <div className="flex flex-col items-center justify-center w-full h-full p-6">
                         {isPlaying ? (
@@ -276,7 +285,6 @@ function SMCRadioContent() {
               </div>
             </div>
 
-            {/* TITOLI (No Truncate) */}
             <div className="text-center space-y-2 max-w-xs sm:max-w-md px-4 z-20 w-full">
               <h2 className="text-xl sm:text-2xl font-bold text-white leading-snug whitespace-normal break-words drop-shadow-lg">
                 {currentTrack !== "SMC Radio" && currentTrack !== "Caricamento..." ? currentTrack : (isPlaying ? "In Diretta" : "SMC Radio")}
@@ -304,30 +312,32 @@ function SMCRadioContent() {
         </div>
 
         {/* TV TAB */}
-        <div className={`absolute inset-0 bg-black flex flex-col transition-opacity duration-500 ${activeTab === 'webtv' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
+        <div className={`absolute inset-0 bg-black flex flex-col transition-opacity duration-500 ${activeTab === 'webtv' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'} ${(isLandscape && isMobile) ? 'fixed z-50' : ''}`}>
            <div className="flex-1 flex flex-col items-center justify-center relative w-full h-full bg-black">
               <div className="w-full h-full flex flex-col items-center justify-center relative">
                   <video 
                     ref={videoRef}
                     controls 
                     playsInline 
-                    className="w-full max-h-full object-contain shadow-2xl"
+                    className={`object-contain shadow-2xl transition-all duration-300 ${(isLandscape && isMobile) ? 'w-screen h-screen max-w-none max-h-none fixed top-0 left-0 z-50' : 'w-full max-h-full'}`}
                     poster="https://placehold.co/1920x1080/1a1a1a/ffffff?text=SMC+Web+TV"
                   >
                     Il tuo browser non supporta il tag video.
                   </video>
-                  <div className="absolute top-4 right-4 opacity-0 hover:opacity-100 transition-opacity z-20">
-                      <button onClick={toggleFullScreen} className="bg-black/50 p-2 rounded-full text-white hover:bg-red-600 transition-colors">
-                          <IconMaximize size={24} />
-                      </button>
-                  </div>
+                  {!isLandscape && (
+                    <div className="absolute top-4 right-4 opacity-0 hover:opacity-100 transition-opacity z-20">
+                        <button onClick={toggleFullScreen} className="bg-black/50 p-2 rounded-full text-white hover:bg-red-600 transition-colors">
+                            <IconMaximize size={24} />
+                        </button>
+                    </div>
+                  )}
               </div>
            </div>
         </div>
       </main>
 
-      {/* FOOTER NAV */}
-      <nav className="flex-none bg-gray-900/95 backdrop-blur-md border-t border-white/10 pb-safe pt-2 px-6">
+      {/* FOOTER NAV - Nascosto in Landscape WebTV su Mobile */}
+      <nav className={`flex-none bg-gray-900/95 backdrop-blur-md border-t border-white/10 pb-safe pt-2 px-6 transition-all duration-300 ${isLandscape && activeTab === 'webtv' && isMobile ? '-mb-20 opacity-0' : 'mb-0 opacity-100'}`}>
         <div className="flex justify-around items-center h-16 sm:h-20">
           <button 
             onClick={() => setActiveTab('radio')}
