@@ -33,33 +33,32 @@ function SMCRadioContent() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentTrack, setCurrentTrack] = useState("Caricamento...");
-  const [isReady, setIsReady] = useState(false); // Stato per attendere il caricamento degli script
+  const [isReady, setIsReady] = useState(false);
   
+  // Gestione Copertina
+  const [coverUrl, setCoverUrl] = useState("");
+  const [imageError, setImageError] = useState(true);
+
   const audioRef = useRef(null);
   const videoRef = useRef(null);
 
   const RADIO_STREAM_URL = "https://a2.asurahosting.com:6150/radio.mp3";
   const RADIO_METADATA_URL = "https://a2.asurahosting.com:6150/status-json.xsl";
   const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
+  const BASE_COVER_URL = "/api/cover"; 
 
-  // --- AUTO-CONFIGURAZIONE FORZATA ---
-  // Questo risolve il problema della grafica "stretta" e del CSS mancante
   useEffect(() => {
     const configureApp = () => {
-        // 1. Forza Viewport Mobile (Risolve il problema "stretta e lunga")
         if (!document.querySelector("meta[name='viewport']")) {
             const meta = document.createElement('meta');
             meta.name = "viewport";
             meta.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
             document.head.appendChild(meta);
         }
-
-        // 2. Inietta Tailwind CSS (Risolve il problema "grafica sballata")
         if (!document.querySelector("script[src*='tailwindcss']")) {
             const script = document.createElement('script');
             script.src = "https://cdn.tailwindcss.com";
             script.onload = () => {
-                 // Piccolo ritardo per assicurarsi che Tailwind processi le classi
                  setTimeout(() => setIsReady(true), 100);
             };
             document.head.appendChild(script);
@@ -67,7 +66,6 @@ function SMCRadioContent() {
             setIsReady(true);
         }
     };
-
     configureApp();
   }, []);
 
@@ -84,7 +82,15 @@ function SMCRadioContent() {
         if (source && source.title) title = source.title;
         else if (source && source.artist && source.title) title = `${source.artist} - ${source.title}`;
       }
-      setCurrentTrack(title || "SMC Radio Live");
+      
+      const newTitle = title || "SMC Radio Live";
+      setCurrentTrack(prev => {
+          if (prev !== newTitle) {
+             return newTitle;
+          }
+          return prev;
+      });
+
     } catch (error) {
       setCurrentTrack("SMC Radio");
     }
@@ -95,6 +101,12 @@ function SMCRadioContent() {
     const interval = setInterval(fetchTrackInfo, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+      const timestamp = Date.now();
+      setCoverUrl(`${BASE_COVER_URL}?t=${timestamp}`);
+      setImageError(false);
+  }, [currentTrack]);
 
   const toggleRadioPlay = () => {
     if (!audioRef.current) return;
@@ -141,10 +153,9 @@ function SMCRadioContent() {
     };
     initHls();
 
-    // Auto-Fullscreen su rotazione (Landscape)
     const handleResize = () => {
         if (window.innerWidth > window.innerHeight && video && !document.fullscreenElement) {
-             video.requestFullscreen().catch(e => {}); // Silenzia errori
+             video.requestFullscreen().catch(e => {});
         }
     };
     window.addEventListener('resize', handleResize);
@@ -163,13 +174,11 @@ function SMCRadioContent() {
       }
   };
 
-  // Se gli script non sono pronti, mostra schermata di caricamento nera
   if (!isReady) {
       return <div className="fixed inset-0 bg-black flex items-center justify-center text-white">Caricamento SMC Radio...</div>;
   }
 
   return (
-    // FIXED INSET-0 GARANTISCE CHE L'APP COPRA TUTTO LO SCHERMO SENZA SCROLL
     <div className="fixed inset-0 bg-gray-900 text-white font-sans overflow-hidden select-none flex flex-col">
       <audio ref={audioRef} preload="none" crossOrigin="anonymous" />
 
@@ -188,42 +197,51 @@ function SMCRadioContent() {
       </header>
 
       <main className="flex-1 relative w-full h-full overflow-hidden">
-        {/* RADIO TAB */}
         <div className={`absolute inset-0 transition-opacity duration-500 ease-in-out flex flex-col ${activeTab === 'radio' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-800 via-gray-900 to-black z-0"></div>
-          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-20 mix-blend-overlay blur-sm"></div>
+          <div className="absolute inset-0 bg-cover bg-center opacity-20 mix-blend-overlay blur-md transition-all duration-1000" 
+               style={{ backgroundImage: `url(${!imageError ? coverUrl : 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop'})` }}>
+          </div>
 
           <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 space-y-6 sm:space-y-8 w-full">
-            <div className="relative w-56 h-56 sm:w-80 sm:h-80 group shrink-0">
-              <div className={`absolute inset-0 bg-red-600 rounded-2xl blur-xl opacity-20 transition-all duration-1000 ${isPlaying ? 'animate-pulse scale-105' : 'scale-100'}`}></div>
-              <div className="relative w-full h-full bg-gradient-to-br from-gray-800 to-black rounded-2xl border border-white/10 shadow-2xl flex items-center justify-center overflow-hidden p-6">
-                {isPlaying ? (
-                  <div className="text-center space-y-2 animate-fade-in w-full">
-                     <div className="flex justify-center items-end space-x-1 h-12 sm:h-16 mb-4 sm:mb-6">
-                        <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1s_infinite] h-4 rounded-t-md"></div>
-                        <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1.2s_infinite] h-12 rounded-t-md"></div>
-                        <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_0.8s_infinite] h-8 rounded-t-md"></div>
-                        <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1.5s_infinite] h-14 rounded-t-md"></div>
-                        <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1.1s_infinite] h-6 rounded-t-md"></div>
-                     </div>
-                     <p className="text-white font-bold text-lg sm:text-xl leading-tight drop-shadow-md line-clamp-3 px-2">{currentTrack}</p>
-                  </div>
+            <div className="relative w-64 h-64 sm:w-80 sm:h-80 group shrink-0 shadow-2xl rounded-2xl">
+              <div className={`absolute inset-0 bg-red-600 rounded-2xl blur-2xl opacity-20 transition-all duration-1000 ${isPlaying ? 'animate-pulse scale-105' : 'scale-100'}`}></div>
+              <div className="relative w-full h-full bg-gray-900 rounded-2xl border border-white/10 overflow-hidden flex items-center justify-center">
+                {!imageError ? (
+                    <img 
+                        src={coverUrl} 
+                        alt="Album Cover" 
+                        className="w-full h-full object-cover transition-opacity duration-500"
+                        onError={() => setImageError(true)}
+                    />
                 ) : (
-                  <IconMusic size={80} className="text-gray-600 sm:w-24 sm:h-24" />
+                    <div className="flex flex-col items-center justify-center w-full h-full p-6">
+                        {isPlaying ? (
+                           <div className="flex justify-center items-end space-x-1 h-12 sm:h-16">
+                                <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1s_infinite] h-8 rounded-t-md"></div>
+                                <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1.2s_infinite] h-16 rounded-t-md"></div>
+                                <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_0.8s_infinite] h-10 rounded-t-md"></div>
+                                <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1.5s_infinite] h-14 rounded-t-md"></div>
+                                <div className="w-2 sm:w-3 bg-red-500 animate-[bounce_1.1s_infinite] h-8 rounded-t-md"></div>
+                           </div>
+                        ) : (
+                           <IconMusic size={80} className="text-gray-600" />
+                        )}
+                    </div>
                 )}
               </div>
             </div>
 
-            <div className="text-center space-y-1 max-w-xs sm:max-w-md px-4">
-              <h2 className="text-xl sm:text-2xl font-bold text-white leading-snug truncate">
-                {isPlaying ? "" : (currentTrack !== "SMC Radio" && currentTrack !== "Caricamento..." ? currentTrack : "Premi Play")}
+            <div className="text-center space-y-1 max-w-xs sm:max-w-md px-4 z-20">
+              <h2 className="text-xl sm:text-2xl font-bold text-white leading-snug truncate drop-shadow-lg">
+                {currentTrack !== "SMC Radio" && currentTrack !== "Caricamento..." ? currentTrack : (isPlaying ? "In Diretta" : "SMC Radio")}
               </h2>
               {isPlaying && (
                  <p className="text-red-400 text-xs sm:text-sm font-medium uppercase tracking-widest animate-pulse">In Onda</p>
               )}
             </div>
 
-            <div className="flex items-center justify-center w-full">
+            <div className="flex items-center justify-center w-full z-20">
                <button 
                 onClick={toggleRadioPlay}
                 className="w-20 h-20 sm:w-24 sm:h-24 bg-red-600 hover:bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-red-600/40 transition-all active:scale-95"
@@ -240,7 +258,6 @@ function SMCRadioContent() {
           </div>
         </div>
 
-        {/* TV TAB */}
         <div className={`absolute inset-0 bg-black flex flex-col transition-opacity duration-500 ${activeTab === 'webtv' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
            <div className="flex-1 flex flex-col items-center justify-center relative w-full h-full bg-black">
               <div className="w-full h-full flex flex-col items-center justify-center relative">
@@ -286,8 +303,6 @@ function SMCRadioContent() {
       <style>{`
         .pb-safe { padding-bottom: env(safe-area-inset-bottom, 20px); }
         @keyframes bounce { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.5); } }
-        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fade-in 0.5s ease-out forwards; }
       `}</style>
     </div>
   );
