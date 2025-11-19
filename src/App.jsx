@@ -44,8 +44,11 @@ function SMCRadioContent() {
 
   const RADIO_STREAM_URL = "https://a2.asurahosting.com:6150/radio.mp3";
   const RADIO_METADATA_URL = "https://a2.asurahosting.com:6150/status-json.xsl";
+  // URL WebTV corretto (rimosso l'errore di battitura '111')
   const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
-  const BASE_COVER_URL = "/api/cover"; 
+  
+  // URL originale della copertina
+  const ORIGINAL_COVER_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.jpg";
 
   useEffect(() => {
     const configureApp = () => {
@@ -85,9 +88,7 @@ function SMCRadioContent() {
       
       const newTitle = title || "SMC Radio Live";
       setCurrentTrack(prev => {
-          if (prev !== newTitle) {
-             return newTitle;
-          }
+          if (prev !== newTitle) return newTitle;
           return prev;
       });
 
@@ -102,9 +103,14 @@ function SMCRadioContent() {
     return () => clearInterval(interval);
   }, []);
 
+  // GESTIONE COPERTINA CON PROXY ESTERNO AUTOMATICO
   useEffect(() => {
       const timestamp = Date.now();
-      setCoverUrl(`${BASE_COVER_URL}?t=${timestamp}`);
+      // Usiamo wsrv.nl che è un proxy di immagini pubblico gratuito e affidabile.
+      // Questo aggira il blocco CORS e gestisce la cache automaticamente.
+      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(ORIGINAL_COVER_URL)}&t=${timestamp}&output=jpg`;
+      
+      setCoverUrl(proxyUrl);
       setImageError(false);
   }, [currentTrack]);
 
