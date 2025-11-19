@@ -1,16 +1,16 @@
 {
-    "short_name": "SMC Radio",
-    "name": "SMC Radio App",
-    "icons": [
-      {
-        "src": "https://www.smcradio.it/wp-content/uploads/logosmcbianco.png",
-        "type": "image/png",
-        "sizes": "512x512"
-      }
-    ],
-    "start_url": ".",
-    "display": "standalone",
-    "theme_color": "#000000",
-    "background_color": "#000000",
-    "orientation": "portrait"
-  }
+  "short_name": "SMC Radio",
+  "name": "SMC Radio App",
+  "icons": [
+    {
+      "src": "https://www.smcradio.it/wp-content/uploads/logosmcbianco.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "fullscreen",
+  "theme_color": "#000000",
+  "background_color": "#000000",
+  "orientation": "portrait"
+}
