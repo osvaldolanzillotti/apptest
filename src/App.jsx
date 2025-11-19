@@ -42,13 +42,15 @@ function SMCRadioContent() {
   const audioRef = useRef(null);
   const videoRef = useRef(null);
 
-  // Link Streaming
+  // --- CONFIGURAZIONE LINK AGGIORNATA E PULITA ---
   const RADIO_STREAM_URL = "https://a2.asurahosting.com:6150/radio.mp3";
-  const RADIO_METADATA_URL = "https://a2.asurahosting.com:6150/status-json.xsl";
-  const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
+  // UNICA FONTE TITOLI: File di testo OnAir.txt
+  const TITLES_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.txt";
+  // LINK COPERTINA
   const ORIGINAL_COVER_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.jpg";
-  
-  // Link Logo Ufficiale
+  // LINK WEB TV
+  const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
+  // LINK LOGO
   const LOGO_URL = "https://www.smcradio.it/wp-content/uploads/logosmcbianco.png";
 
   // --- AUTO-CONFIGURAZIONE FORZATA ---
@@ -75,69 +77,57 @@ function SMCRadioContent() {
     configureApp();
   }, []);
 
-  // --- FETCH METADATI (TITOLI) RIGOROSA ---
+  // --- FETCH TITOLI ESCLUSIVAMENTE DA FILE DI TESTO (OnAir.txt) ---
   const fetchTrackInfo = async () => {
     try {
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(RADIO_METADATA_URL)}`;
+      // Usiamo AllOrigins come proxy per garantire la lettura del file di testo da qualsiasi dispositivo
+      // Aggiungiamo timestamp per forzare il refresh ed evitare cache vecchie
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`${TITLES_URL}?t=${Date.now()}`)}`;
       
       const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error("Network error");
       
-      const wrapperData = await response.json();
-      const data = JSON.parse(wrapperData.contents); 
-      
-      let title = null;
-      if (data.icestats && data.icestats.source) {
-        const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
-        
-        // CORREZIONE CRUCIALE:
-        // 1. Cerca SOLO il canale che finisce per /radio.mp3
-        // 2. NON usare fallback (|| sources[0]) per evitare di leggere canali fantasma
-        const source = sources.find(s => s.listenurl && s.listenurl.endsWith("/radio.mp3"));
-        
-        if (source) {
-            // Controllo se il titolo è valido e non è vuoto o un trattino
-            if (source.title && source.title.trim().length > 1 && source.title !== "-") {
-                 title = source.title;
-            } 
-            // Alcuni server mettono Artist - Title separati
-            else if (source.artist && source.title) {
-                 title = `${source.artist} - ${source.title}`;
-            }
-        }
+      if (!response.ok) {
+          throw new Error("Network error");
       }
       
-      // Se title è null (nessun titolo trovato su radio.mp3), forziamo il default
-      const newTitle = title || "SMC Radio Live";
+      const data = await response.json();
+      // AllOrigins restituisce il testo dentro la proprietà .contents
+      const rawText = data.contents;
       
-      setCurrentTrack(prev => {
-          if (prev !== newTitle) return newTitle;
-          return prev;
-      });
+      if (rawText && rawText.trim().length > 1) {
+          // Il file contiene già "Titolo - Autore" come richiesto
+          setCurrentTrack(rawText.trim());
+      } else {
+          // Se il file è vuoto, mostriamo il nome della radio
+          setCurrentTrack("SMC Radio Live");
+      }
 
     } catch (error) {
-      // In caso di errore di rete, non facciamo nulla o resettiamo
-      // Per sicurezza resettiamo a Live se l'errore persiste
-      // setCurrentTrack("SMC Radio Live");
+       // In caso di errore di rete, manteniamo il titolo precedente o default
+       if (currentTrack === "Caricamento...") {
+           setCurrentTrack("SMC Radio Live");
+       }
     }
   };
 
   useEffect(() => {
     fetchTrackInfo();
-    const interval = setInterval(fetchTrackInfo, 5000); // Polling più veloce (5s)
+    // Aggiornamento ogni 4 secondi per essere reattivi
+    const interval = setInterval(fetchTrackInfo, 4000);
     return () => clearInterval(interval);
   }, []);
 
   // --- GESTIONE COPERTINA ---
   useEffect(() => {
       const timestamp = Date.now();
-      // Se il titolo è generico, NASCONDI subito la copertina vecchia
+      // Se siamo in modalità default, nascondiamo la copertina
       if (currentTrack === "SMC Radio Live" || currentTrack === "Caricamento..." || currentTrack.includes("SMC Radio")) {
           setImageError(true);
           return;
       }
 
-      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(ORIGINAL_COVER_URL)}&t=${timestamp}&output=jpg`;
+      // Proxy wsrv.nl per la copertina (evita problemi CORS sulle immagini)
+      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(ORIGINAL_COVER_URL)}&t=${timestamp}&output=jpg&n=${Math.random()}`;
       setCoverUrl(proxyUrl);
       setImageError(false);
   }, [currentTrack]);
@@ -237,12 +227,14 @@ function SMCRadioContent() {
         {/* RADIO TAB */}
         <div className={`absolute inset-0 transition-opacity duration-500 ease-in-out flex flex-col ${activeTab === 'radio' ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
           <div className="absolute inset-0 bg-gradient-to-br from-gray-800 via-gray-900 to-black z-0"></div>
-          
+          {/* Background Copertina Sfocata */}
           <div className="absolute inset-0 bg-cover bg-center opacity-20 mix-blend-overlay blur-md transition-all duration-1000" 
                style={{ backgroundImage: `url(${!imageError ? coverUrl : 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop'})` }}>
           </div>
 
           <div className="relative z-10 flex-1 flex flex-col items-center justify-center p-6 space-y-6 sm:space-y-8 w-full">
+            
+            {/* AREA COPERTINA */}
             <div className="relative w-64 h-64 sm:w-80 sm:h-80 group shrink-0 shadow-2xl rounded-2xl">
               <div className={`absolute inset-0 bg-red-600 rounded-2xl blur-2xl opacity-20 transition-all duration-1000 ${isPlaying ? 'animate-pulse scale-105' : 'scale-100'}`}></div>
               
@@ -272,6 +264,7 @@ function SMCRadioContent() {
               </div>
             </div>
 
+            {/* TITOLI (No Truncate) */}
             <div className="text-center space-y-2 max-w-xs sm:max-w-md px-4 z-20 w-full">
               <h2 className="text-xl sm:text-2xl font-bold text-white leading-snug whitespace-normal break-words drop-shadow-lg">
                 {currentTrack !== "SMC Radio" && currentTrack !== "Caricamento..." ? currentTrack : (isPlaying ? "In Diretta" : "SMC Radio")}
@@ -321,6 +314,7 @@ function SMCRadioContent() {
         </div>
       </main>
 
+      {/* FOOTER NAV */}
       <nav className="flex-none bg-gray-900/95 backdrop-blur-md border-t border-white/10 pb-safe pt-2 px-6">
         <div className="flex justify-around items-center h-16 sm:h-20">
           <button 
