@@ -42,29 +42,30 @@ function SMCRadioContent() {
   const audioRef = useRef(null);
   const videoRef = useRef(null);
 
-  // --- CONFIGURAZIONE LINK AGGIORNATA E PULITA ---
+  // Link Streaming
   const RADIO_STREAM_URL = "https://a2.asurahosting.com:6150/radio.mp3";
-  // UNICA FONTE TITOLI: File di testo OnAir.txt
-  const TITLES_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.txt";
-  // LINK COPERTINA
-  const ORIGINAL_COVER_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.jpg";
-  // LINK WEB TV
+  const RADIO_METADATA_URL = "https://a2.asurahosting.com:6150/status-json.xsl";
   const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
-  // LINK LOGO
+  const ORIGINAL_COVER_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.jpg";
+  
+  // Link Logo Ufficiale
   const LOGO_URL = "https://www.smcradio.it/wp-content/uploads/logosmcbianco.png";
 
-  // --- AUTO-CONFIGURAZIONE FORZATA ---
+  // --- AUTO-CONFIGURAZIONE FORZATA (Fix Responsive e CSS) ---
   useEffect(() => {
     const configureApp = () => {
+        // 1. Inietta Viewport Meta per Mobile
         if (!document.querySelector("meta[name='viewport']")) {
             const meta = document.createElement('meta');
             meta.name = "viewport";
             meta.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
             document.head.appendChild(meta);
         } else {
+            // Se esiste ma è sbagliato, lo forziamo
             document.querySelector("meta[name='viewport']").content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
         }
 
+        // 2. Inietta Tailwind CSS se manca
         if (!document.querySelector("script[src*='tailwindcss']")) {
             const script = document.createElement('script');
             script.src = "https://cdn.tailwindcss.com";
@@ -77,56 +78,64 @@ function SMCRadioContent() {
     configureApp();
   }, []);
 
-  // --- FETCH TITOLI ESCLUSIVAMENTE DA FILE DI TESTO (OnAir.txt) ---
+  // --- FETCH METADATI (TITOLI) CON PROXY E CACHE BUSTING ---
   const fetchTrackInfo = async () => {
     try {
-      // Usiamo AllOrigins come proxy per garantire la lettura del file di testo da qualsiasi dispositivo
-      // Aggiungiamo timestamp per forzare il refresh ed evitare cache vecchie
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`${TITLES_URL}?t=${Date.now()}`)}`;
+      // 1. Aggiungiamo un timestamp sia all'URL interno che a quello del proxy per forzare il refresh
+      const timestamp = Date.now();
+      const bustCacheUrl = `${RADIO_METADATA_URL}?_t=${timestamp}`;
+      // Usiamo AllOrigins per evitare blocchi CORS
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(bustCacheUrl)}`;
       
       const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error("Network error");
       
-      if (!response.ok) {
-          throw new Error("Network error");
+      const wrapperData = await response.json();
+      const data = JSON.parse(wrapperData.contents); 
+      
+      let title = null;
+      if (data.icestats && data.icestats.source) {
+        const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
+        // Cerca specificamente il mount point radio.mp3
+        const source = sources.find(s => s.listenurl && s.listenurl.includes("radio.mp3")) || sources[0];
+        
+        if (source && source.title && source.title.trim() !== "" && source.title.trim() !== "-") {
+             title = source.title;
+        } else if (source && source.artist && source.title) {
+             title = `${source.artist} - ${source.title}`;
+        }
       }
       
-      const data = await response.json();
-      // AllOrigins restituisce il testo dentro la proprietà .contents
-      const rawText = data.contents;
+      const newTitle = title || "SMC Radio Live";
       
-      if (rawText && rawText.trim().length > 1) {
-          // Il file contiene già "Titolo - Autore" come richiesto
-          setCurrentTrack(rawText.trim());
-      } else {
-          // Se il file è vuoto, mostriamo il nome della radio
-          setCurrentTrack("SMC Radio Live");
-      }
+      setCurrentTrack(prev => {
+          if (prev !== newTitle) return newTitle;
+          return prev;
+      });
 
     } catch (error) {
-       // In caso di errore di rete, manteniamo il titolo precedente o default
-       if (currentTrack === "Caricamento...") {
-           setCurrentTrack("SMC Radio Live");
-       }
+      // console.warn("Errore titoli:", error);
+      // Non resettiamo se c'è un errore momentaneo, manteniamo l'ultimo titolo valido
+      // setCurrentTrack(prev => prev === "Caricamento..." ? "SMC Radio Live" : prev);
     }
   };
 
   useEffect(() => {
     fetchTrackInfo();
-    // Aggiornamento ogni 4 secondi per essere reattivi
-    const interval = setInterval(fetchTrackInfo, 4000);
+    const interval = setInterval(fetchTrackInfo, 5000); // Aggiorna ogni 5 secondi
     return () => clearInterval(interval);
   }, []);
 
-  // --- GESTIONE COPERTINA ---
+  // --- GESTIONE COPERTINA CON PROXY SICURO E CACHE BUSTING ---
   useEffect(() => {
       const timestamp = Date.now();
-      // Se siamo in modalità default, nascondiamo la copertina
+      // Se il titolo è generico, mostra il fallback (logo/visualizer)
       if (currentTrack === "SMC Radio Live" || currentTrack === "Caricamento..." || currentTrack.includes("SMC Radio")) {
           setImageError(true);
           return;
       }
 
-      // Proxy wsrv.nl per la copertina (evita problemi CORS sulle immagini)
+      // Usiamo wsrv.nl come proxy immagine con timestamp per evitare cache
       const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(ORIGINAL_COVER_URL)}&t=${timestamp}&output=jpg&n=${Math.random()}`;
       setCoverUrl(proxyUrl);
       setImageError(false);
@@ -208,8 +217,10 @@ function SMCRadioContent() {
     <div className="fixed inset-0 bg-gray-900 text-white font-sans overflow-hidden select-none flex flex-col">
       <audio ref={audioRef} preload="none" crossOrigin="anonymous" />
 
+      {/* HEADER */}
       <header className="flex-none px-4 py-2 bg-black/40 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-10 h-16 sm:h-20">
         <div className="flex items-center space-x-3">
+          {/* Logo Fix */}
           <div className="h-10 w-10 sm:h-12 sm:w-12 bg-red-600 rounded-full flex items-center justify-center p-2 shadow-lg shadow-red-600/40 overflow-hidden shrink-0">
             <img src={LOGO_URL} alt="SMC" className="h-full w-full object-contain" />
           </div>
@@ -222,6 +233,7 @@ function SMCRadioContent() {
         </div>
       </header>
 
+      {/* MAIN CONTENT */}
       <main className="flex-1 relative w-full h-full overflow-hidden">
         
         {/* RADIO TAB */}
