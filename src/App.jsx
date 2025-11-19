@@ -61,7 +61,6 @@ function SMCRadioContent() {
             meta.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
             document.head.appendChild(meta);
         } else {
-            // Se esiste ma è sbagliato, lo forziamo
             document.querySelector("meta[name='viewport']").content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
         }
 

@@ -11,7 +11,6 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#000000">
-    <!-- Icona Ufficiale Sito -->
     <link rel="icon" href="https://www.smcradio.it/wp-content/uploads/logosmcbianco.png">
   </head>
   <body class="bg-black text-white">
@@ -21,15 +20,14 @@
       </div>
     </div>
 
-    <!-- Caricamento React -->
+    <!-- IMPORTANTE: Solo main.jsx deve essere caricato, cancella gli altri -->
     <script type="module" src="/src/main.jsx"></script>
-    <script type="module" src="/src/index.jsx"></script>
-    <script type="module" src="/src/index.js"></script>
 
     <!-- Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
+          // Evita errori in anteprima bloccando il SW se non siamo su http/https
           if (window.location.protocol.startsWith('http')) {
             navigator.serviceWorker.register('/sw.js').catch(() => {});
           }
