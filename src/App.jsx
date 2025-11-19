@@ -44,10 +44,7 @@ function SMCRadioContent() {
 
   const RADIO_STREAM_URL = "https://a2.asurahosting.com:6150/radio.mp3";
   const RADIO_METADATA_URL = "https://a2.asurahosting.com:6150/status-json.xsl";
-  // URL WebTV corretto (rimosso l'errore di battitura '111')
   const WEBTV_STREAM_URL = "https://f53a8aeeab01477abf3115d5628c70fa.msvdn.net/live/S75918331/aJfIRYHSb0i4/playlist.m3u8";
-  
-  // URL originale della copertina
   const ORIGINAL_COVER_URL = "https://play.radiocharlie.it/CoverMBStudio/OnAir.jpg";
 
   useEffect(() => {
@@ -72,28 +69,40 @@ function SMCRadioContent() {
     configureApp();
   }, []);
 
+  // --- FETCH METADATI (TITOLI) CON LOGICA RIGOROSA ---
   const fetchTrackInfo = async () => {
     try {
-      const response = await fetch(RADIO_METADATA_URL);
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(RADIO_METADATA_URL)}`;
+      
+      const response = await fetch(proxyUrl);
       if (!response.ok) throw new Error("Network error");
-      const data = await response.json();
+      
+      const wrapperData = await response.json();
+      const data = JSON.parse(wrapperData.contents); 
       
       let title = null;
       if (data.icestats && data.icestats.source) {
         const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
-        const source = sources.find(s => s.listenurl.includes("radio.mp3")) || sources[0];
-        if (source && source.title) title = source.title;
-        else if (source && source.artist && source.title) title = `${source.artist} - ${source.title}`;
+        
+        const source = sources.find(s => s.listenurl && s.listenurl.includes("radio.mp3")) || sources[0];
+        
+        if (source && source.title && source.title.trim() !== "" && source.title.trim() !== "-") {
+             title = source.title;
+        } else if (source && source.artist && source.title) {
+             title = `${source.artist} - ${source.title}`;
+        }
       }
       
       const newTitle = title || "SMC Radio Live";
+      
       setCurrentTrack(prev => {
           if (prev !== newTitle) return newTitle;
           return prev;
       });
 
     } catch (error) {
-      setCurrentTrack("SMC Radio");
+      console.warn("Errore titoli:", error);
+      setCurrentTrack(prev => prev === "Caricamento..." ? "SMC Radio Live" : prev);
     }
   };
 
@@ -103,13 +112,15 @@ function SMCRadioContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // GESTIONE COPERTINA CON PROXY ESTERNO AUTOMATICO
+  // GESTIONE COPERTINA CON PROXY
   useEffect(() => {
       const timestamp = Date.now();
-      // Usiamo wsrv.nl che è un proxy di immagini pubblico gratuito e affidabile.
-      // Questo aggira il blocco CORS e gestisce la cache automaticamente.
+      if (currentTrack === "SMC Radio Live" || currentTrack === "Caricamento...") {
+          setImageError(true);
+          return;
+      }
+
       const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(ORIGINAL_COVER_URL)}&t=${timestamp}&output=jpg`;
-      
       setCoverUrl(proxyUrl);
       setImageError(false);
   }, [currentTrack]);
@@ -238,8 +249,9 @@ function SMCRadioContent() {
               </div>
             </div>
 
+            {/* INFO TRACK & CONTROLS - TITOLI COMPLETI (NO TRUNCATE) */}
             <div className="text-center space-y-1 max-w-xs sm:max-w-md px-4 z-20">
-              <h2 className="text-xl sm:text-2xl font-bold text-white leading-snug truncate drop-shadow-lg">
+              <h2 className="text-xl sm:text-2xl font-bold text-white leading-snug whitespace-normal break-words drop-shadow-lg">
                 {currentTrack !== "SMC Radio" && currentTrack !== "Caricamento..." ? currentTrack : (isPlaying ? "In Diretta" : "SMC Radio")}
               </h2>
               {isPlaying && (
