@@ -176,7 +176,7 @@ function SMCRadioContent() {
       <header className="flex-none px-4 py-2 bg-black/40 backdrop-blur-md border-b border-white/10 flex items-center justify-between z-10 h-16 sm:h-20">
         <div className="flex items-center space-x-3">
           <div className="h-10 w-10 sm:h-12 sm:w-12 bg-red-600 rounded-full flex items-center justify-center p-2 shadow-lg shadow-red-600/40 overflow-hidden shrink-0">
-            <img src="https://i.imgur.com/G5g3B8A.png" alt="SMC" className="h-full w-full object-contain" />
+            <img src="https://www.smcradio.it/wp-content/uploads/logosmcbianco.png" alt="SMC" className="h-full w-full object-contain" />
           </div>
           <div>
             <h1 className="text-lg sm:text-xl font-bold leading-none tracking-tight truncate">SMC Radio</h1>
