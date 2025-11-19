@@ -93,9 +93,11 @@ function SMCRadioContent() {
           // Gestione Lock API (Best Effort per Android)
           if (screen.orientation && screen.orientation.lock) {
               if (activeTab === 'radio') {
+                   // .lock ritorna una promise, quindi .catch va bene
                    screen.orientation.lock('portrait').catch(() => {}); 
               } else {
-                   screen.orientation.unlock().catch(() => {});
+                   // .unlock è sincrono e ritorna void, niente .catch
+                   screen.orientation.unlock();
               }
           }
           
